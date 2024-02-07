@@ -20,17 +20,70 @@ app.listen(port, () => {
   console.log(`API is listening on port: ${port}`); //template literal
 }); //listen for web requests form the frontend and don't stop () => console.log('listening at 3000')); // listen for requests on port 3000
 
-app.get("/boxes", async (req, res) => {
-  let boxes = await redisClient.json.get("boxes", { path: "$" }); //get boxes from redis
-  res.json(boxes[0]); //convert boxes to a JSON string and send it to the user
-}); //return boxes to the user
+const orderSchema = {
+  type: "object",
+  properties: {
+    customerName: { type: "string" },
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          productId: { type: "number" },
+          quantity: { type: "number" },
+        },
+        required: ["productId", "quantity"],
+      },
+    },
+  },
+  required: ["customerName", "items"],
+};
 
-app.post("/boxes", async (req, res) => {
-  const newBox = req.body; //get the box from the request body
-  newBox.id = parseInt(await redisClient.json.arrLen("boxes", "$")) + 1; //add an id to the box, the user should not provide an id
-  await redisClient.json.arrAppend("boxes", "$", newBox); //save the box to redis
-  res.json(newBox); //send the box back to the user
-}); //add a box to the list of boxes
+const Ajv = require("ajv");
+const ajv = new Ajv();
+
+app.post("/orders", async (req, res) => {
+  const validate = ajv.compile(orderSchema);
+  const valid = validate(req.body);
+
+  if (!valid) {
+    res.status(400).json(validate.errors);
+  } else {
+    const newOrder = req.body;
+    // Check if the 'orders' key exists
+    const ordersExist = await redisClient.exists("orders");
+    if (ordersExist.arrLen-1 == null) {
+      newOrder.id = 1;
+    } else {
+      // If it doesn't exist, set the id to 1
+      newOrder.id = parseInt(await redisClient.json.arrLen("orders", "$")) + 1;
+    }
+    await redisClient.json.arrAppend("orders", "$", newOrder);
+    res.json(newOrder);
+  }
+});
+
+app.get("/orders", async (req, res) => {
+  let orders = await redisClient.json.get("orders", { path: "$" });
+  res.json(orders[0]);
+});
+
+
+// app.get("/boxes", async (req, res) => {
+//   let boxes = await redisClient.json.get("boxes", { path: "$" }); //get boxes from redis
+//   res.json(boxes[0]); //convert boxes to a JSON string and send it to the user
+// }); //return boxes to the user
+
+
+
+// app.post("/boxes", async (req, res) => {
+//   const newBox = req.body; //get the box from the request body
+//   newBox.id = parseInt(await redisClient.json.arrLen("boxes", "$")) + 1; //add an id to the box, the user should not provide an id
+//   await redisClient.json.arrAppend("boxes", "$", newBox); //save the box to redis
+//   res.json(newBox); //send the box back to the user
+// }); //add a box to the list of boxes
+
+
 
 //make a list of boxes
 // const boxes = [
